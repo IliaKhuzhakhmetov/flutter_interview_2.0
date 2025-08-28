@@ -342,6 +342,25 @@
 ### Аннотации
 `Аннотации` — это синтаксические метаданные, которые могут быть добавлены к коду. Другими словами, это возможность добавить дополнительную информацию к любому компоненту кода, например, к классу или методу. Аннотации всегда начинаются с символа `@` (`@override`, `@required`). Любой класс может служить аннотацией, если в нем определен const конструктор.
 
+`package:meta` предоставляет `@Target` — можно указать допустимые «цели»:
+
+``` dart
+import 'package:meta/meta_meta.dart';
+
+@Target({TargetKind.classType, TargetKind.method})
+class ApiVersion {
+  final int major, minor;
+  const ApiVersion(this.major, this.minor);
+}
+
+@ApiVersion(1, 0)
+class Svc {
+  @ApiVersion(1, 1)
+  void ping() {}
+}
+
+```
+
 ---
 <!-- TOC --><a name="int8-uint8-int16-uint16"></a>
 ### int8, uint8, int16, uint16...
