@@ -177,14 +177,38 @@ The `Service Locator` can be accessed from anywhere in the code. This is its mai
 ## Dart
 <!-- TOC --><a name="final-and-const"></a>
 ### final and const
-- `final` is calculated in runtime. Only the instance value is constant. When using a final instance, a new memory area is allocated in memory, even if the object value is identical. 
-- `const` is calculated at compile time.  Not only the value is constant, but also the instance itself. When using a const variable, a new memory area is not allocated, but a reference to an existing instance is used.
+- `var` means "infer the type from the initializer". For example, `var name = 'Bob';` creates a variable of type `String`, not `dynamic`.
+- For local variables with an obvious type, the official Dart examples usually use `var` instead of an explicit type annotation.
+- At the same time, Effective Dart allows two styles for local variables: either use `final` for variables that aren't reassigned and `var` for the rest, or use `var` for all local variables. The important part is consistency within the project.
+- If a local variable has no initializer or the type isn't obvious, it's better to specify the type explicitly.
+- `final` means that a variable can be assigned only once. This is a restriction on the variable or reference, not on how the object is created. By itself, `final` doesn't mean object reuse or mandatory new memory allocation.
+- A new object is created when a `non-const` expression is evaluated. For example, `final a = [1, 2];` and `final b = [1, 2];` create two different lists even though their contents are equal.
+- `const` means compile-time constant. Constant objects are canonicalized, so identical `const` expressions can refer to the same instance. For example, `const a = [1, 2]; const b = [1, 2];` and `identical(a, b)` returns `true`.
+- Important: a `final` object can still be mutable if its type is mutable. A `const` object and its fields must be immutable.
+
+Sources:
+- [Dart docs: Variables](https://dart.dev/language/variables)
+- [Effective Dart: Usage -> Variables](https://dart.dev/effective-dart/usage#variables)
+- [Dart linter: unnecessary_final](https://dart.dev/tools/linter-rules/unnecessary_final)
+- [Dart docs: Variables -> Final and const](https://dart.dev/language/variables#final-and-const)
+- [Dart API: identical()](https://api.dart.dev/dart-core/identical.html)
+- [Dart docs: Constructors -> Constant constructors](https://dart.dev/language/constructors#constant-constructors)
 
 ---
 <!-- TOC --><a name="jit-and-aot"></a>
 ### JIT and AOT
-- `Just-in-time (JIT) compilation` is a type of compilation that is performed directly while the program is running, which significantly speeds up the development cycle. But it should be borne in mind that the program may slow down and run slower
-- `Ahead-of-time (AOT) compilation` is a type of compilation that is fully executed before running a program. The Dart code is converted to native machine code, which is then packaged into a binary file with the extension `.so` for `Android` or `.dylib` for `iOS`. `AOT` Takes longer than `JIT`, but as a result, the program runs much faster.
+- `Just-in-time (JIT) compilation` compiles code while the program is running. In Flutter, this mode is used in `debug` because it supports a fast development cycle, `hot reload`, and convenient debugging.
+- `JIT` is optimized primarily for development speed, not for execution speed, binary size, or deployment. Because of that, `debug` builds can run noticeably slower than `profile` or `release`.
+- `Ahead-of-time (AOT) compilation` compiles Dart code to native machine code at build time. In Flutter on native platforms, `AOT` is used for `profile` and `release` builds.
+- `AOT` provides faster startup, more predictable performance, and a smaller output through optimizations and `tree shaking`.
+- Important: describing the output as specific file extensions like `.so` or `.dylib` is too simplified and depends on the platform and build artifacts, so it's more accurate to say that Dart code is compiled to native machine code for the target platform.
+
+Sources:
+- [Flutter docs: Build modes](https://docs.flutter.dev/testing/build-modes)
+- [Flutter docs: Architectural overview](https://docs.flutter.dev/resources/architectural-overview)
+- [Flutter docs: Use the app size tool](https://docs.flutter.dev/tools/devtools/app-size)
+- [Dart docs: Glossary -> JIT](https://dart.dev/resources/glossary#just-in-time-compilation-jit)
+- [Dart docs: Glossary -> AOT](https://dart.dev/resources/glossary#aot)
 
 ---
 <!-- TOC --><a name="hot-restart-and-hot-reload"></a>
@@ -195,8 +219,28 @@ The `Service Locator` can be accessed from anywhere in the code. This is its mai
 ---
 <!-- TOC --><a name="hashcode"></a>
 ### HashCode
-A `hash code` is a getter for any object that returns an `int`. It is needed when saving an object to `map` or `set`. Hash codes must be the same for objects that are equal to each other according to the == operator  
-`int get hashCode => Object.hash(runtimeType, ..., ...);`
+`hashCode` is an `int` getter available on every object. It represents the part of an object's state that participates in `==` comparisons.
+
+Key points:
+
+- by default, `Object.hashCode` is based on object identity, just like the default `==` compares objects by identity;
+- if you override `==`, you should also override `hashCode`, otherwise the object won't behave correctly in hash-based collections;
+- if `a == b`, then `a.hashCode` and `b.hashCode` must be equal;
+- equal hash codes do not mean the objects are equal: collisions are allowed;
+- `hashCode` is used by hash-based collections such as `HashMap`, `LinkedHashMap`, `HashSet`, and `LinkedHashSet`.
+
+Usually, `hashCode` is built from the same fields that participate in `==`:
+`int get hashCode => Object.hash(runtimeType, field1, field2);`
+
+For mutable classes, custom `==` and `hashCode` are risky: if a field that affects equality changes after the object is added to a `Set` or used as a `Map` key, collection behavior becomes unpredictable.
+
+Sources:
+- [Dart API: Object.hashCode](https://api.dart.dev/dart-core/Object/hashCode.html)
+- [Dart API: Object.operator ==](https://api.dart.dev/dart-core/Object/operator_equals.html)
+- [Dart API: Object.hash](https://api.dart.dev/dart-core/Object/hash.html)
+- [Dart API: HashSet](https://api.dart.dev/dart-collection/HashSet-class.html)
+- [Dart linter: hash_and_equals](https://dart.dev/tools/linter-rules/hash_and_equals)
+- [Dart linter: avoid_equals_and_hash_code_on_mutable_classes](https://dart.dev/tools/linter-rules/avoid_equals_and_hash_code_on_mutable_classes)
 
 ---
 <!-- TOC --><a name="extension"></a>
@@ -206,11 +250,64 @@ A `hash code` is a getter for any object that returns an `int`. It is needed whe
 --- 
 <!-- TOC --><a name="mixin"></a>
 ### Mixin
-A `mixin` is a multiple inheritance mechanism that allows classes to use the functionality of other classes without explicit inheritance.
+A `mixin` is a way to reuse implementation across multiple class hierarchies. Unlike regular inheritance, a mixin doesn't model an "is-a" relationship; it simply adds reusable fields and methods to a class.
 
-Mixins in Dart are defined by the keyword `mixin`. They can contain methods, fields, and getters/setters, but they cannot have constructors. Instead, mixins are initialized automatically when they are applied to a class. The `with` operator is used to use mixins    
+Key points:
 
-If the mixins have a method with the same name, then the implementation that is specified in the last mixin will remain. Since mixins will override this method
+- a mixin is declared with `mixin` and applied to a class with `with`;
+- a mixin can contain methods, fields, getters/setters, and abstract members;
+- a `mixin` can't have an `extends` clause, and generative constructors are not allowed in mixins;
+- if a mixin needs access to the base class API or to `super`, use an `on` clause;
+- if several mixins define the same method, the rightmost one wins: `class C with A, B` uses the implementation from `B`.
+
+Very small example:
+
+```dart
+mixin Logger {
+  void log(String message) => print('[LOG] $message');
+}
+
+class UserService with Logger {
+  void loadUser() => log('load user');
+}
+```
+
+Example with `on`:
+
+```dart
+class Animal {
+  void move() => print('move');
+}
+
+mixin Flyer on Animal {
+  void fly() {
+    move();
+    print('fly');
+  }
+}
+
+class Bird extends Animal with Flyer {}
+```
+
+Common built-in mixins:
+
+- `ListMixin`, `MapMixin`, and `SetMixin` from `dart:collection` help implement custom collections by requiring only a minimal set of members.
+- `SingleTickerProviderStateMixin` from Flutter is convenient for a `State` with one `AnimationController`.
+- `TickerProviderStateMixin` from Flutter is used when a single `State` owns multiple `AnimationController`s.
+- `AutomaticKeepAliveClientMixin` helps preserve item state in lazily built lists.
+- `WidgetsBindingObserver` lets you receive app lifecycle and system notifications.
+- `RestorationMixin` helps restore `StatefulWidget` state.
+
+Sources:
+- [Dart docs: Mixins](https://dart.dev/language/mixins)
+- [Dart API: ListMixin](https://api.dart.dev/dart-collection/ListMixin.html)
+- [Dart API: MapMixin](https://api.dart.dev/dart-collection/MapMixin.html)
+- [Dart API: SetMixin](https://api.dart.dev/dart-collection/SetMixin.html)
+- [Flutter API: SingleTickerProviderStateMixin](https://api.flutter.dev/flutter/widgets/SingleTickerProviderStateMixin-mixin.html)
+- [Flutter API: TickerProviderStateMixin](https://api.flutter.dev/flutter/widgets/TickerProviderStateMixin-mixin.html)
+- [Flutter API: AutomaticKeepAliveClientMixin](https://api.flutter.dev/flutter/widgets/AutomaticKeepAliveClientMixin-mixin.html)
+- [Flutter API: WidgetsBindingObserver](https://api.flutter.dev/flutter/widgets/WidgetsBindingObserver-class.html)
+- [Flutter API: RestorationMixin](https://api.flutter.dev/flutter/widgets/RestorationMixin-mixin.html)
 
 ---
 <!-- TOC --><a name="sound-null-safety"></a>
@@ -246,30 +343,116 @@ With the advent of null safety in Dart, the hierarchy of classes and interfaces 
 ---
 <!-- TOC --><a name="generics"></a>
 ### Generics
-`Generics` are parameterized types. They allow the program to get away from being tightly bound to certain types, define the functionality so that it can use data of any type and ensure their security. Generalizations also reduce code repeatability and give you the opportunity to provide a single interface and implementation for many types.
+`Generics` are parameterized types: a type can take one or more type parameters, such as `List<String>` or `Map<String, int>`.
+
+Why `Generics` are useful:
+
+- they provide `type safety`: for example, you can't safely add an `int` to a `List<String>`;
+- they reduce code duplication: instead of `UserCache`, `StringCache`, and `IntCache`, you can create one `Cache<T>`;
+- they help create more precise APIs and improve type inference;
+- in Dart, generic types are `reified`, which means type information is preserved at runtime. For example, `names is List<String>` returns `true`.
+
+Examples:
+
+```dart
+final names = <String>['Ann', 'Bob'];
+final scores = <String, int>{'Ann': 10, 'Bob': 20};
+```
+
+Generic class:
+
+```dart
+class Box<T> {
+  Box(this.value);
+  final T value;
+}
+
+final box = Box<int>(42);
+```
+
+Generic method:
+
+```dart
+T first<T>(List<T> items) => items.first;
+```
+
+Type bound with `extends`:
+
+```dart
+class Repository<T extends Object> {}
+```
+
+Here, `T extends Object` means that `T` must be a non-nullable type.
+
+Sources:
+- [Dart docs: Generics](https://dart.dev/language/generics)
+- [Dart docs: Collections](https://dart.dev/language/collections)
+- [Dart docs: The Dart type system -> Generic type assignment](https://dart.dev/guides/language/sound-problems#generic-type-assignment)
 
 ---
 <!-- TOC --><a name="dart-vm"></a>
 ### Dart VM
-`Dart VM (Dart virtual machine)` - Dart runtime environment
+`Dart VM (Dart Virtual Machine)` is the Dart runtime environment on native platforms. In Flutter, it is especially important in `debug` mode and during development.
 
-Components:
-- `Execution Environment`
-- `Garbage Collector`
-- `Basic libraries and native methods`
-- `System debugging`
-- `Profiler`
-- `ARM Architecture Simulator`
+At a basic level, `Dart VM`:
+
+- executes Dart code;
+- manages memory and the `garbage collector`;
+- performs runtime type checks;
+- manages `isolates`;
+- provides `JIT`, incremental recompilation, debugging, and metrics used by development tools.
+
+That's why Flutter `hot reload` works by updating code inside the running `Dart VM`.
+
+Important: on the `web`, Dart code usually doesn't run in the `Dart VM`; it is compiled to `JavaScript` or `WebAssembly` and runs in the browser environment.
+
+Sources:
+- [Dart overview](https://dart.dev/overview)
+- [Flutter docs: Hot reload](https://docs.flutter.dev/tools/hot-reload)
+- [Flutter docs: Build modes](https://docs.flutter.dev/testing/build-modes)
 
 ---
 <!-- TOC --><a name="zones"></a>
 ### Zones
-A zone is a mechanism that allows you to manage and handle errors and other events that occur in certain areas of the code.
+`Zone` is an execution context that survives across `async` boundaries and lets you customize asynchronous behavior without modifying the asynchronous code itself.
 
-1. Protecting your application from termination due to an unhandled exception
-2. Association of data known as `zone-local values` with individual zones
-3. Redefining a limited set of methods, such as print() and scheduleMicrotask(), inside part or all of the code
-4. Perform the operation every time the code enters or exits the zone. These operations may include starting or stopping a timer or saving a stacktrace.
+What zones are useful for:
+
+- catching uncaught errors in async code with `runZonedGuarded`;
+- storing `zone-local values` and reading them with `Zone.current[key]`;
+- overriding part of the runtime behavior through `ZoneSpecification`, such as `print`, `scheduleMicrotask`, timers, and uncaught error handling;
+- wrapping callback execution, which is useful for logging, profiling, and tracing.
+
+Important:
+
+- all Dart code runs in some zone; by default this is `Zone.root`;
+- a zone propagates to asynchronous callbacks that are registered inside it;
+- zones are especially useful for server-side code, error tracking, request-scoped state, and debugging tools.
+
+Very small example:
+
+```dart
+runZonedGuarded(() {
+  Future.microtask(() => throw Exception('boom'));
+}, (error, stackTrace) {
+  print('caught: $error');
+});
+```
+
+Example with a `zone-local value`:
+
+```dart
+runZoned(() {
+  print(Zone.current[#requestId]); // 42
+}, zoneValues: {#requestId: 42});
+```
+
+Sources:
+- [Dart docs: Zones](https://dart.dev/libraries/async/zones)
+- [Dart API: Zone](https://api.dart.dev/dart-async/Zone-class.html)
+- [Dart API: runZoned](https://api.dart.dev/dart-async/runZoned.html)
+- [Dart API: runZonedGuarded](https://api.dart.dev/dart-async/runZonedGuarded.html)
+- [Dart API: ZoneSpecification](https://api.dart.dev/dart-async/ZoneSpecification-class.html)
 
 ---
 <!-- TOC --><a name="types-of-errors"></a>
