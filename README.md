@@ -748,14 +748,76 @@ runZoned(() {
 
 ### Never
 
-`Never` - это тип, означающий, что ни один тип не разрешен и `Never` сам по себе не может быть создан. Используется как возвращаемый тип при гарантированной ошибке.
+`Never` - это bottom type в Dart: у него нет значений, и он является подтипом любого другого типа.
+
+На практике это означает:
+
+- выражение типа `Never` не может успешно завершиться;
+- такой код обязательно выбрасывает исключение, завершает выполнение или уходит в бесконечный цикл;
+- `Never` полезен как возвращаемый тип для функций, которые точно не возвращают управление;
+- `Never` помогает flow analysis и reachability analysis понимать, что код после такого вызова может быть недостижим.
+
+Очень маленький пример:
+
+```dart
+Never fail(String message) {
+  throw Exception(message);
+}
+```
+
+Ещё один важный момент: у `throw`-выражения статический тип тоже `Never`.
+
+Источники:
+- [Dart docs: Glossary -> Bottom type](https://dart.dev/resources/glossary#bottom-type)
+- [Dart docs: Understanding null safety -> Never for unreachable code](https://dart.dev/null-safety/understanding-null-safety#never-for-unreachable-code)
+- [Dart API: Error.throwWithStackTrace](https://api.dart.dev/dart-core/Error/throwWithStackTrace.html)
 
 ---
 <!-- TOC --><a name="covariant"></a>
 
 ### Covariant
 
-`Covariant` - это ключевое слово в dart, которое указывает на то, что тип возвращаемого значения может быть изменен на более узкий тип в подклассе.
+`covariant` - это модификатор в Dart, который позволяет намеренно сузить тип параметра при переопределении метода, а также применяется к полям и сеттерам.
+
+Важно:
+
+- без `covariant` параметр в переопределённом методе обычно нельзя сужать до подтипа;
+- с `covariant` анализатор разрешает такое сужение, а корректность аргумента дополнительно проверяется во время выполнения;
+- `covariant` не нужен для возвращаемого типа: return type и так может быть более узким при переопределении.
+
+Пример:
+
+```dart
+class Animal {}
+
+class Mouse extends Animal {}
+
+class Cat extends Animal {
+  void chase(covariant Mouse mouse) {
+    print('catch mouse');
+  }
+}
+```
+
+Чаще `covariant` встречается в базовом классе:
+
+```dart
+class Widget {}
+
+class Button extends Widget {}
+
+class Renderer {
+  void render(covariant Widget widget) {}
+}
+
+class ButtonRenderer extends Renderer {
+  @override
+  void render(Button widget) {}
+}
+```
+
+Источники:
+- [Dart docs: The Dart type system -> Covariant parameters](https://dart.dev/guides/language/sound-problems#covariant-parameters)
 
 ---
 <!-- TOC --><a name="-3"></a>

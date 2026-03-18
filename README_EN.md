@@ -508,12 +508,76 @@ Sources:
 ---
 <!-- TOC --><a name="never"></a>
 ### Never
-`Never` is a type, meaning that no type is allowed and `Never` itself cannot be created. It is used as a return type in case of a guaranteed error.
+`Never` is Dart's bottom type: it has no values and is a subtype of every other type.
+
+In practice, this means:
+
+- an expression of type `Never` can never complete successfully;
+- such code must throw, abort, or loop forever;
+- `Never` is useful as a return type for functions that never return control;
+- `Never` helps flow analysis and reachability analysis understand that code after such a call can be unreachable.
+
+Very small example:
+
+```dart
+Never fail(String message) {
+  throw Exception(message);
+}
+```
+
+One more important detail: a `throw` expression also has the static type `Never`.
+
+Sources:
+- [Dart docs: Glossary -> Bottom type](https://dart.dev/resources/glossary#bottom-type)
+- [Dart docs: Understanding null safety -> Never for unreachable code](https://dart.dev/null-safety/understanding-null-safety#never-for-unreachable-code)
+- [Dart API: Error.throwWithStackTrace](https://api.dart.dev/dart-core/Error/throwWithStackTrace.html)
 
 ---
 <!-- TOC --><a name="covariant"></a>
 ### Covariant
-`Covariant` is a keyword in dart that indicates that the type of the return value can be changed to a narrower type in the subclass.
+`covariant` is a modifier in Dart that lets you intentionally narrow a parameter type when overriding a method, and it can also be used on fields and setters.
+
+Important:
+
+- without `covariant`, you usually can't narrow a parameter type to a subtype in an override;
+- with `covariant`, the analyzer allows that narrowing and the argument type is additionally checked at runtime;
+- `covariant` isn't needed for return types: return types can already become narrower in an override.
+
+Very small example:
+
+```dart
+class Animal {}
+
+class Mouse extends Animal {}
+
+class Cat extends Animal {
+  void chase(covariant Mouse mouse) {
+    print('catch mouse');
+  }
+}
+```
+
+More commonly, `covariant` appears in the base class:
+
+```dart
+class Widget {}
+
+class Button extends Widget {}
+
+class Renderer {
+  void render(covariant Widget widget) {}
+}
+
+class ButtonRenderer extends Renderer {
+  @override
+  void render(Button widget) {}
+}
+```
+
+Sources:
+- [Dart docs: The Dart type system -> Covariant parameters](https://dart.dev/guides/language/sound-problems#covariant-parameters)
+- [Dart docs: Extend a class](https://dart.dev/language/extend)
+- [Dart docs: Keywords](https://dart.dev/language/keywords)
 
 ---
 <!-- TOC --><a name="annotations"></a>
