@@ -939,21 +939,93 @@ class Svc {
 
 ### Многопоточность в Dart и Flutter
 
-`Dart` — однопоточный язык программирования. Он исполняет одновременно одну инструкцию. Но при этом мы можем запустить код в отдельном поток с помощью `Isolate`
+Код в `Dart` выполняется внутри `Isolate`. Внутри одного isolate код исполняется в одном потоке выполнения, но для параллельной работы на других ядрах можно создавать дополнительные isolate.
 
 ---
 <!-- TOC --><a name="isolate"></a>
 
 ### Isolate
 
-`Isolate` -  это легковесный процесс (поток исполнения), который выполняется параллельно с другими потоками и процессами в приложении. Каждый `Isolate` в Dart имеет свой собственный экземпляр виртуальной машины Dart, собственную память и управляется с помощью своего `Event Loop`.
+`Isolate` - это изолированный контекст выполнения в `Dart`. У каждого isolate свой `Event Loop`, свои глобальные поля и собственный набор объектов. Изоляты не разделяют изменяемое состояние и общаются только сообщениями через `ReceivePort` и `SendPort`.
+
+#### Isolate Group
+
+`Isolate group` - это группа isolate, которые запускаются с одним и тем же исполняемым кодом. Это позволяет рантайму переиспользовать код и часть внутренних структур, поэтому `Isolate.spawn()` обычно быстрее, чем `Isolate.spawnUri()`, а обмен сообщениями между isolate из одной группы обычно дешевле.
+
+- `Isolate.spawn()` создаёт isolate в той же `isolate group`
+- `Isolate.spawnUri()` создаёт isolate в новой `isolate group`
+- `Isolate.exit()` работает только между isolate из одной группы
+
+Важно: `isolate group` - это оптимизация рантайма, а не shared mutable memory. Даже внутри одной группы isolate по-прежнему не разделяют изменяемое состояние и общаются только сообщениями.
+
+#### Основные способы запуска isolate
+
+- `Isolate.spawn()` - запускает isolate с тем же кодом, что и текущий. Новый isolate попадает в ту же `isolate group`, поэтому стартует быстрее, а обмен сообщениями обычно дешевле
+- `Isolate.spawnUri()` - запускает isolate из отдельной точки входа (`Uri`). Такой isolate создаётся в новой `isolate group`, поэтому он тяжелее и медленнее, но подходит для отдельного `entrypoint`, своего `packageConfig` или `environment`
+- `Isolate.run()` - высокоуровневый API для одной вычислительной задачи. Как он работает, описано в отдельном подразделе ниже
+- `Isolate.exit(port, message)` - завершает текущий isolate и в качестве последнего действия отправляет сообщение. Для isolate из одной группы это может происходить без копирования объекта
+
+`Isolate.spawn()` и `isolate group` не превращают `Dart` в shared-memory multithreading. Даже внутри одной группы публичная модель остаётся прежней: данные передаются сообщениями, а не через общую изменяемую память.
+
+Для `spawnUri()`:
+
+- `uri` указывает на `Dart`-файл или библиотеку, где top-level `main` является entrypoint нового isolate
+- Целевой `main` должен быть вызываем с 0, 1 или 2 аргументами: `main()`, `main(List<String> args)`, `main(List<String> args, dynamic message)`
+- `args` - это именно `List<String>`, который передаётся вторым аргументом в `Isolate.spawnUri(uri, args, message, ...)`
+- `message` - это отдельное начальное сообщение любого sendable-типа, которое передаётся третьим аргументом `spawnUri()`
+- Если runtime-тип `message` нельзя присвоить второму параметру `main`, запуск завершится ошибкой времени выполнения
+
+#### Передача данных
+
+- Для isolate, созданных через `spawn()`, допускается почти любой отправляемый объект, кроме объектов с нативными ресурсами (`Socket` и т.д.), `ReceivePort`, `DynamicLibrary`, `Finalizer` и некоторых unsendable типов
+- Для `spawnUri()` ограничения строже: безопаснее считать, что можно передавать только простые значения, коллекции, `SendPort`, `Capability`, `TransferableTypedData` и совместимые `Type`
+- Для больших бинарных данных используют `TransferableTypedData`, чтобы не копировать весь буфер при пересылке
+- Замыкания могут неявно захватывать лишнее состояние. Из-за этого isolate может не стартовать или стартовать дороже, чем ожидалось
+
+#### Ошибки и жизненный цикл
+
+- Ошибка создания isolate приходит в `Future`, который возвращают `spawn()` и `spawnUri()`. Здесь можно получить, например, `IsolateSpawnException`
+- Неотловленные ошибки внутри уже запущенного isolate не "пролетают" обычным `try/catch` вокруг `spawn`. Их нужно слушать через `onError`, `addErrorListener()` или `isolate.errors`
+- `addErrorListener()` присылает список из двух элементов: строковое представление ошибки и строковый `stack trace`. `isolate.errors` оборачивает это в `RemoteError`
+- Если важно не потерять первую ошибку, задавайте `onError` и `onExit` прямо в `spawn()` или `spawnUri()` либо запускайте isolate с `paused: true`, затем вешайте listeners и только потом вызывайте `resume()`
+- Обычно неотловленная ошибка завершает isolate. Если это поведение важно для вашего сценария, задайте `errorsAreFatal` явно или вызовите `setErrorsFatal(false)` до начала работы
+- Для отслеживания завершения isolate используют `onExit` или `addOnExitListener()`
+- `await Isolate.run(...)` можно оборачивать в `try/catch`: ошибка самой `computation` вернётся в `Future`, а uncaught async error может прийти как `RemoteError`
+
+#### Isolate.run()
+
+`Isolate.run()` - это удобная обёртка над короткоживущим isolate для одной задачи.
+
+Как работает под капотом:
+
+- В текущем isolate создаются `Completer` и `RawReceivePort`
+- В исходнике SDK дальше вызывается `Isolate.spawn(_RemoteRunner._remoteExecute, _RemoteRunner<R>(computation, resultPort.sendPort), ...)`
+- В `spawn()` сразу прокидываются `onError`, `onExit`, `errorsAreFatal: true` и `debugName`
+- Новый isolate выполняет `computation`; если она возвращает `Future`, рантайм дожидается его завершения уже внутри нового isolate
+- При успехе результат отправляется обратно через `Isolate.exit(...)`, поэтому значение возвращается без дополнительного копирования
+- Если `computation` выбрасывает обычную ошибку, `Future` от `Isolate.run()` завершается этой же ошибкой
+- Если внутри computation происходит uncaught async error, она приходит как `RemoteError`, потому что `addErrorListener()` не передаёт исходный объект ошибки
+- Если отправка `computation` в новый isolate не удалась, возвращаемый `Future` тоже завершится ошибкой
+
+#### Коротко
+
+- `Isolate.run()` удобно для одноразовой CPU-задачи с результатом
+- `Isolate.spawn()` - для долгоживущего worker isolate и двустороннего обмена сообщениями
+- `Isolate.spawnUri()` - для отдельного `entrypoint` и отдельной `isolate group`
+
+Источник SDK: [sdk/lib/isolate/isolate.dart](https://github.com/dart-lang/sdk/blob/main/sdk/lib/isolate/isolate.dart)
 
 ---
 <!-- TOC --><a name="compute"></a>
 
 ### Compute
 
-`Compute` - это функция, которая создаёт изолят и запускает переданный код.
+`compute()` - это `Flutter`-обёртка для одноразового фонового вычисления.
+
+- На native-платформах `await compute(fn, message)` эквивалентен `await Isolate.run(() => fn(message))`
+- На `web` отдельный isolate не создаётся: callback выполняется в текущем `event loop`
+- `callback`, `message` и результат должны быть sendable между isolate
+- `compute()` удобен для тяжёлой однократной CPU-задачи, но не подходит для долгоживущего worker isolate и сложного протокола обмена сообщениями
 
 ---
 <!-- TOC --><a name="--6"></a>

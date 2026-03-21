@@ -657,17 +657,89 @@ A `stream` is a sequence of asynchronous events. Stream tells you that there is 
 ---
 <!-- TOC --><a name="multithreading-in-dart-and-flutter"></a>
 ### Multithreading in Dart and Flutter 
-`Dart` is a single—threaded programming language. It executes one instruction at a time. But at the same time, we can run the code in a separate thread using `Isolate`
+Code in `Dart` runs inside an `Isolate`. Inside a single isolate, code executes on one thread of execution, but you can create additional isolates for parallel work on other cores.
 
 ---
 <!-- TOC --><a name="isolate"></a>
 ### Isolate
-`Isolate` is a lightweight process (execution thread) that runs in parallel with other threads and processes in the application. Each `Isolate` in Dart has its own instance of the Dart virtual machine, its own memory and is controlled using its own `Event Loop`.
+`Isolate` is an isolated execution context in `Dart`. Each isolate has its own `Event Loop`, its own globals and its own object graph. Isolates do not share mutable state and communicate only by sending messages through `ReceivePort` and `SendPort`.
+
+#### Isolate Group
+
+An `isolate group` is a group of isolates that run with the same executable code. This lets the runtime reuse code and some internal structures, which is why `Isolate.spawn()` is usually faster than `Isolate.spawnUri()`, and message passing between isolates in the same group is usually cheaper.
+
+- `Isolate.spawn()` creates an isolate in the same `isolate group`
+- `Isolate.spawnUri()` creates an isolate in a new `isolate group`
+- `Isolate.exit()` only works between isolates in the same group
+
+Important: an `isolate group` is a runtime optimization, not shared mutable memory. Even inside the same group, isolates still do not share mutable state and still communicate only by messages.
+
+Main ways to start an isolate:
+
+- `Isolate.spawn()` starts an isolate with the same code as the current one. The new isolate belongs to the same `isolate group`, so startup is usually cheaper and message passing is usually faster
+- `Isolate.spawnUri()` starts an isolate from a separate entry point (`Uri`). That isolate is created in a new `isolate group`, so it is heavier and slower, but it is useful when you need a separate `entrypoint`, `packageConfig` or `environment`
+- `Isolate.run()` is a high-level API for a single computation. Its internals are described in a separate subsection below
+- `Isolate.exit(port, message)` terminates the current isolate and sends a final message as the last action. For isolates in the same group this may happen without copying the object
+
+`Isolate.spawn()` and `isolate group` do not turn `Dart` into shared-memory multithreading. Even inside the same group the public model stays the same: data is passed as messages, not through shared mutable memory.
+
+For `spawnUri()`:
+
+- `uri` points to the `Dart` file or library whose top-level `main` is the entrypoint of the new isolate
+- The target `main` must be callable with 0, 1, or 2 arguments: `main()`, `main(List<String> args)`, `main(List<String> args, dynamic message)`
+- `args` is exactly the `List<String>` passed as the second argument of `Isolate.spawnUri(uri, args, message, ...)`
+- `message` is a separate initial value of any sendable type passed as the third argument to `spawnUri()`
+- If the runtime type of `message` can't be assigned to the second parameter of `main`, startup fails with a runtime error
+
+Sending data:
+
+- For isolates created with `spawn()`, almost any sendable object can be transferred, except objects with native resources (`Socket`, etc.), `ReceivePort`, `DynamicLibrary`, `Finalizer`, and some other unsendable types
+- For `spawnUri()` the restrictions are stricter: it is safer to assume you can only send simple values, collections, `SendPort`, `Capability`, `TransferableTypedData`, and compatible `Type` values
+- For large binary payloads use `TransferableTypedData` to avoid copying the whole buffer
+- Closures may capture more state than expected. Because of that, an isolate may fail to start or may become more expensive than expected
+
+Errors and lifecycle:
+
+- A startup failure is reported through the `Future` returned by `spawn()` or `spawnUri()`. This is where you can get, for example, `IsolateSpawnException`
+- Uncaught errors inside an already running isolate do not automatically surface through a normal `try/catch` around `spawn`. Listen for them through `onError`, `addErrorListener()`, or `isolate.errors`
+- `addErrorListener()` sends a two-element list: the string form of the error and the string form of the `stack trace`. `isolate.errors` wraps that as `RemoteError`
+- If you must not miss the first error, pass `onError` and `onExit` directly into `spawn()` or `spawnUri()`, or start with `paused: true`, attach listeners, and only then call `resume()`
+- An uncaught error will usually terminate the isolate. If this behavior matters for your case, set `errorsAreFatal` explicitly or call `setErrorsFatal(false)` before work begins
+- To observe isolate termination, use `onExit` or `addOnExitListener()`
+- `await Isolate.run(...)` can be wrapped in `try/catch`: an error from `computation` completes the `Future`, while an uncaught async error may arrive as `RemoteError`
+
+#### Isolate.run()
+
+`Isolate.run()` is a convenience wrapper around a short-lived isolate for a single task.
+
+How it works under the hood:
+
+- In the current isolate it creates a `Completer` and a `RawReceivePort`
+- In the SDK source it then calls `Isolate.spawn(_RemoteRunner._remoteExecute, _RemoteRunner<R>(computation, resultPort.sendPort), ...)`
+- The `spawn()` call wires `onError`, `onExit`, `errorsAreFatal: true`, and `debugName`
+- The new isolate executes `computation`; if it returns a `Future`, the runtime awaits it inside the new isolate
+- On success, the result is sent back through `Isolate.exit(...)`, so the value is returned without an extra copy
+- If `computation` throws a normal error, the `Future` returned by `Isolate.run()` completes with that same error
+- If an uncaught async error happens inside the computation, it arrives as `RemoteError`, because `addErrorListener()` doesn't transfer the original error object
+- If sending `computation` into the new isolate fails, the returned `Future` also completes with an error
+
+SDK source: [sdk/lib/isolate/isolate.dart](https://github.com/dart-lang/sdk/blob/main/sdk/lib/isolate/isolate.dart)
+
+In short:
+
+- `Isolate.run()` is convenient for a one-off CPU-bound task that returns a result
+- `Isolate.spawn()` is for a long-lived worker isolate with two-way messaging
+- `Isolate.spawnUri()` is for a separate `entrypoint` and a separate `isolate group`
 
 --- 
 <!-- TOC --><a name="compute"></a>
 ### Compute
-`Compute` is a function that creates an isolate and runs the passed code.
+`compute()` is a `Flutter` helper for one-off background work.
+
+- On native platforms `await compute(fn, message)` is equivalent to `await Isolate.run(() => fn(message))`
+- On `web`, no separate isolate is created: the callback runs on the current `event loop`
+- The `callback`, `message`, and result must all be sendable between isolates
+- `compute()` is a good fit for a heavy one-off CPU task, but not for a long-lived worker isolate or a complex message protocol
 	
 ---
 <!-- TOC --><a name="multithreading-issues"></a>
