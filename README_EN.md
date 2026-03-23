@@ -15,6 +15,7 @@
    * [DI and Service Locator](#di-and-service-locator)
 - [Dart](#dart)
    * [final and const](#final-and-const)
+   * [Class modifiers (`abstract`, `base`, `interface`, `final`, `sealed`)](#class-modifiers)
    * [JIT and AOT](#jit-and-aot)
    * [Hot Restart and Hot Reload](#hot-restart-and-hot-reload)
    * [HashCode](#hashcode)
@@ -193,6 +194,48 @@ Sources:
 - [Dart docs: Variables -> Final and const](https://dart.dev/language/variables#final-and-const)
 - [Dart API: identical()](https://api.dart.dev/dart-core/identical.html)
 - [Dart docs: Constructors -> Constant constructors](https://dart.dev/language/constructors#constant-constructors)
+
+---
+<!-- TOC --><a name="class-modifiers"></a>
+### Class modifiers (`abstract`, `base`, `interface`, `final`, `sealed`)
+
+- Since Dart 3, class modifiers let an API author explicitly control whether a type can be instantiated, extended, implemented, or used as a closed hierarchy. The exception is `abstract`, which existed before Dart 3.
+- Important: the restrictions from `base` / `interface` / `final` / `sealed` primarily apply to code outside the library where the type is declared.
+
+Quick mental model:
+
+- `abstract` means the type itself can't be instantiated.
+- `interface` means it can be `implemented`, but not `extended`.
+- `base` means it can be `extended`, but not `implemented`.
+- `final` means it can be neither `extended` nor `implemented`.
+- `sealed` means a closed family of subtypes for exhaustive `switch`; the type itself isn't directly instantiable.
+
+Cheat sheet:
+
+| Declaration | Instantiate | `extends` outside the library | `implements` outside the library | When to use |
+| --- | --- | --- | --- | --- |
+| `class` | Yes | Yes | Yes | When the type is intentionally open for any use. |
+| `abstract class` | No | Yes | Yes | When you need a base contract or partial implementation, but the base type itself shouldn't be created. |
+| `interface class` | Yes | No | Yes | When you want to expose a contract, but not allow inheritance of implementation. |
+| `abstract interface class` | No | No | Yes | The closest Dart equivalent to a "pure interface". |
+| `base class` | Yes | Yes | No | When every subtype must actually inherit your implementation and invariants. |
+| `abstract base class` | No | Yes | No | An abstract base with shared implementation that must not be merely implemented. |
+| `final class` | Yes | No | No | When you want to fully close external subtyping and evolve the API safely. |
+| `abstract final class` | No | No | No | Rare case: can't instantiate and can't create external subtypes. Usually uncommon. |
+| `sealed class` | No | No | No | When you need a closed set of subtypes and exhaustive `switch` / pattern matching. |
+
+Important nuances:
+
+- `base` is transitive: any subtype of a `base` class must also be marked `base`, `final`, or `sealed`.
+- `final` includes the restrictions of `base`, and then closes the hierarchy even more.
+- `sealed` does not transitively restrict all descendants; the restriction is on the sealed type's direct subtypes.
+- If a type should work both as a class and as a mixin, look at `mixin class`, `abstract mixin class`, `base mixin class`, and `base mixin`.
+- The official reference forbids some combinations. For example, `base`, `interface`, and `final` are mutually exclusive, and `sealed` isn't combined with `abstract`, `base`, `interface`, or `final`.
+
+Sources:
+- [Dart docs: Class modifiers](https://dart.dev/language/class-modifiers)
+- [Dart docs: Class modifiers for API maintainers](https://dart.dev/language/class-modifiers-for-apis)
+- [Dart docs: Class modifiers reference](https://dart.dev/language/modifier-reference)
 
 ---
 <!-- TOC --><a name="jit-and-aot"></a>

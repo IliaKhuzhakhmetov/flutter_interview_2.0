@@ -31,6 +31,7 @@
   - [Секреты в мобильной аппе](#mobile-secrets)
 - [Dart](#dart)
   - [final и const](#final-const)
+  - [Модификаторы классов (`abstract`, `base`, `interface`, `final`, `sealed`)](#class-modifiers)
   - [JIT и AOT](#jit-aot)
   - [Hot Restart и Hot Reload](#hot-restart-hot-reload)
   - [HashCode](#hashcode)
@@ -451,6 +452,49 @@ NoSQL — это базы данных, которые не используют
 - [Dart docs: Variables -> Final and const](https://dart.dev/language/variables#final-and-const)
 - [Dart API: identical()](https://api.dart.dev/dart-core/identical.html)
 - [Dart docs: Constructors -> Constant constructors](https://dart.dev/language/constructors#constant-constructors)
+
+---
+<!-- TOC --><a name="class-modifiers"></a>
+
+### Модификаторы классов (`abstract`, `base`, `interface`, `final`, `sealed`)
+
+- Начиная с Dart 3, модификаторы классов позволяют автору API явно ограничивать, можно ли тип создавать, наследовать, имплементировать или использовать как закрытую иерархию. Исключение - `abstract`: он был в Dart и раньше.
+- Важно: ограничения `base` / `interface` / `final` / `sealed` в первую очередь относятся к коду вне библиотеки, где тип объявлен.
+
+Короткая логика:
+
+- `abstract` - сам тип нельзя создать.
+- `interface` - можно `implements`, нельзя `extends`.
+- `base` - можно `extends`, нельзя `implements`.
+- `final` - нельзя ни `extends`, ни `implements`.
+- `sealed` - закрытое семейство подтипов для exhaustive `switch`; сам тип не создаётся напрямую.
+
+Шпора:
+
+| Объявление | Создать экземпляр | `extends` вне библиотеки | `implements` вне библиотеки | Когда брать |
+| --- | --- | --- | --- | --- |
+| `class` | Да | Да | Да | Когда тип специально открыт для любого использования. |
+| `abstract class` | Нет | Да | Да | Когда нужен базовый контракт или частичная реализация, но сам тип создавать нельзя. |
+| `interface class` | Да | Нет | Да | Когда наружу нужен контракт, но не хочется разрешать наследование реализации. |
+| `abstract interface class` | Нет | Нет | Да | Лучший аналог "чистого интерфейса" в Dart. |
+| `base class` | Да | Да | Нет | Когда все подтипы обязаны реально наследовать твою реализацию и инварианты. |
+| `abstract base class` | Нет | Да | Нет | Абстрактная база с общей реализацией, которую нельзя просто имплементировать. |
+| `final class` | Да | Нет | Нет | Когда хочешь полностью закрыть внешнее подтипирование и безопасно развивать API. |
+| `abstract final class` | Нет | Нет | Нет | Редкий вариант: нельзя создать и нельзя делать внешние подтипы. Обычно нужен редко. |
+| `sealed class` | Нет | Нет | Нет | Когда нужен закрытый набор подтипов и исчерпывающий `switch` / pattern matching. |
+
+Важные нюансы:
+
+- У `base` есть transitivity: любой его потомок тоже должен быть помечен как `base`, `final` или `sealed`.
+- `final` включает в себя ограничения `base`: он тоже запрещает внешнюю реализацию интерфейса и закрывает иерархию ещё сильнее.
+- `sealed` не "заражает" потомков: ограничение на прямые подтипы действует только для самого `sealed`-типа.
+- Если нужен тип, который можно использовать и как класс, и как миксин, смотри в сторону `mixin class`, `abstract mixin class`, `base mixin class` и `base mixin`.
+- По официальной справке некоторые комбинации запрещены: например, нельзя сочетать `base`, `interface` и `final` вместе, а `sealed` не комбинируют с `abstract`, `base`, `interface` или `final`.
+
+Источники:
+- [Dart docs: Class modifiers](https://dart.dev/language/class-modifiers)
+- [Dart docs: Class modifiers for API maintainers](https://dart.dev/language/class-modifiers-for-apis)
+- [Dart docs: Class modifiers reference](https://dart.dev/language/modifier-reference)
 
 ---
 <!-- TOC --><a name="jit-aot"></a>
