@@ -146,6 +146,22 @@ Data structures are needed to store data in a suitable way
 - `Graphs`  
 - `Hash tables`  
 
+In Dart, it is also useful to remember the standard hash-based collections that preserve insertion order:
+
+- `LinkedHashMap` is a hash-table based `Map` that keeps key insertion order. A regular non-`const` map literal such as `{'a': 1, 'b': 2}` creates a `LinkedHashMap`.
+- Core `LinkedHashMap` operations such as `map[key]`, `map[key] = value`, `containsKey`, and `remove` are usually expected `O(1)` with well-distributed `hashCode` values.
+- In `LinkedHashMap`, `containsValue` is `O(n)`, and iterating `keys`, `values`, or `entries` is also `O(n)`.
+- Updating the value for an existing key does not change order. Removing a key and inserting it again moves it to the end.
+
+- `LinkedHashSet` is the default `Set` implementation in Dart: a hash table with insertion-order iteration.
+- Core `LinkedHashSet` operations such as `add`, `contains`, `lookup`, `remove`, and reading `length` are usually amortized `O(1)` with well-distributed `hashCode` values.
+- Iteration over a `LinkedHashSet` is `O(n)`.
+- Re-adding an element that is already present does not change its position. Removing it and adding it again moves it to the end.
+
+Sources:
+- [Dart API: LinkedHashMap](https://api.dart.dev/dart-collection/LinkedHashMap-class.html)
+- [Dart API: LinkedHashSet](https://api.dart.dev/dart-collection/LinkedHashSet-class.html)
+
 --- 
 <!-- TOC --><a name="imperative-and-declarative-programming"></a>
 ### Imperative and declarative programming
@@ -303,6 +319,25 @@ Key points:
 - if a mixin needs access to the base class API or to `super`, use an `on` clause;
 - if several mixins define the same method, the rightmost one wins: `class C with A, B` uses the implementation from `B`.
 
+If you need a type that works both as a regular class and as a mixin, Dart 3+ provides `mixin class`:
+
+- a regular `class` can't be used in a `with` clause; the type must be declared as `mixin` or `mixin class`;
+- a `mixin class` can be used both with `extends` and with `with`;
+- a `mixin class` inherits restrictions from both worlds: it can't declare `extends` or `with` in its own declaration, it can't have generative constructors, and it can't use `on`;
+- useful combinations: `abstract mixin class` can't be instantiated, but can still be used with `extends` / `implements` / `with`; `base mixin` can only be mixed in and can't be freely `implemented` outside the library; `base mixin class` can be both extended and mixed in, but not implemented outside the library.
+
+Very small `mixin class` example:
+
+```dart
+mixin class Timestamped {
+  final createdAt = DateTime.now();
+}
+
+class Message with Timestamped {}
+
+class AuditRecord extends Timestamped {}
+```
+
 Very small example:
 
 ```dart
@@ -343,6 +378,7 @@ Common built-in mixins:
 
 Sources:
 - [Dart docs: Mixins](https://dart.dev/language/mixins)
+- [Dart docs: Class modifiers reference](https://dart.dev/language/modifier-reference)
 - [Dart API: ListMixin](https://api.dart.dev/dart-collection/ListMixin.html)
 - [Dart API: MapMixin](https://api.dart.dev/dart-collection/MapMixin.html)
 - [Dart API: SetMixin](https://api.dart.dev/dart-collection/SetMixin.html)

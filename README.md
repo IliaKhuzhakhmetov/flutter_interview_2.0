@@ -29,6 +29,7 @@
   - [DAO, DTO, VO, BO](#dao-dto-vo-bo)
   - [DI и Service Locator](#di-service-locator)
   - [Секреты в мобильной аппе](#mobile-secrets)
+  - [JWT](#jwt)
 - [Dart](#dart)
   - [final и const](#final-const)
   - [Модификаторы классов (`abstract`, `base`, `interface`, `final`, `sealed`)](#class-modifiers)
@@ -359,7 +360,23 @@ NoSQL — это базы данных, которые не используют
 - `Графы`  
 - `Хеш-таблицы`  
 
+В Dart полезно отдельно помнить про стандартные хэш-коллекции с сохранением порядка вставки:
+
+- `LinkedHashMap` - это `Map` на основе хэш-таблицы, который помнит порядок вставки ключей. Обычный литерал map без `const`, например `{'a': 1, 'b': 2}`, создаёт именно `LinkedHashMap`.
+- Базовые операции `LinkedHashMap` вроде `map[key]`, `map[key] = value`, `containsKey` и `remove` обычно работают за ожидаемое `O(1)` при хорошем распределении `hashCode`.
+- У `LinkedHashMap` `containsValue` работает за `O(n)`, а итерация по `keys`, `values` и `entries` тоже стоит `O(n)`.
+- Если обновить значение по существующему ключу, порядок не поменяется. Если удалить ключ и добавить заново, он окажется в конце.
+
+- `LinkedHashSet` - это стандартная реализация `Set` в Dart: хэш-таблица плюс сохранение порядка вставки элементов.
+- Базовые операции `LinkedHashSet` вроде `add`, `contains`, `lookup`, `remove` и получение `length` обычно работают за амортизированное `O(1)` при хорошем распределении `hashCode`.
+- Итерация по `LinkedHashSet` стоит `O(n)`.
+- Повторный `add` уже существующего элемента не меняет порядок. Если удалить элемент и добавить его снова, он переместится в конец.
+
 [Подробнее](https://habr.com/ru/company/alconost/blog/419685/)
+
+Источники по Dart-коллекциям:
+- [Dart API: LinkedHashMap](https://api.dart.dev/dart-collection/LinkedHashMap-class.html)
+- [Dart API: LinkedHashSet](https://api.dart.dev/dart-collection/LinkedHashSet-class.html)
 
 ---
 <!-- TOC --><a name="--1"></a>
@@ -429,6 +446,56 @@ NoSQL — это базы данных, которые не используют
 - [Apple: Managing Keys, Certificates, and Passwords](https://developer.apple.com/library/archive/documentation/Security/Conceptual/cryptoservices/KeyManagementAPIs/KeyManagementAPIs.html)
 - [Android Developers: Android Keystore system](https://developer.android.com/privacy-and-security/keystore)
 - [Google Maps Platform: API security best practices](https://developers.google.com/maps/api-security-best-practices)
+
+---
+<!-- TOC --><a name="jwt"></a>
+
+### JWT
+
+`JWT (JSON Web Token)` - компактный формат токена для передачи набора claims между сторонами. Чаще всего используется для авторизации, identity propagation и передачи метаданных о сессии.
+
+Обычно JWT выглядит так:
+
+`header.payload.signature`
+
+Каждая часть кодируется в `Base64Url` и разделяется точкой.
+
+- `Header` - метаданные токена. Обычно содержит:
+  - `alg` - алгоритм подписи, например `HS256`, `RS256`, `ES256`
+  - `typ` - тип токена, обычно `JWT`
+  - `kid` - идентификатор ключа, если на backend есть ротация ключей
+- `Payload` - полезная нагрузка, то есть набор claims. JWT может содержать:
+  - `Registered claims` - стандартные поля вроде `iss` (issuer), `sub` (subject), `aud` (audience), `exp` (expiration time), `nbf` (not before), `iat` (issued at), `jti` (token id)
+  - `Public claims` - общепринятые кастомные claims с понятным именем или namespace
+  - `Private claims` - внутренние поля конкретной системы, например `userId`, `role`, `permissions`, `deviceId`, `sessionId`, `tenantId`
+- `Signature` - криптографическая подпись, которая позволяет проверить целостность токена и убедиться, что payload не был изменён
+
+Что важно помнить:
+
+- `JWT не шифрует данные по умолчанию.` Обычный signed JWT (`JWS`) можно легко декодировать, поэтому класть туда пароли, refresh token, приватные ключи и другие секреты нельзя.
+- `JWT подтверждает целостность, а не скрытность.` Если нужна именно конфиденциальность содержимого, нужен `JWE` или другой механизм шифрования.
+- `Payload` лучше держать небольшим. Чем больше токен, тем дороже каждый HTTP-запрос.
+- `exp` и короткий срок жизни токена снижают риск при утечке access token.
+- `JWT обычно не хранит всё состояние сессии.` Внутрь кладут идентификаторы и claims для принятия решений, а не весь профиль пользователя целиком.
+
+Пример payload:
+
+```json
+{
+  "sub": "1234567890",
+  "iss": "https://api.example.com",
+  "aud": "mobile_app",
+  "exp": 1710000000,
+  "iat": 1709996400,
+  "role": "admin",
+  "permissions": ["read:profile", "edit:profile"]
+}
+```
+
+#### Источники
+
+- [RFC 7519: JSON Web Token (JWT)](https://datatracker.ietf.org/doc/html/rfc7519)
+- [RFC 7515: JSON Web Signature (JWS)](https://datatracker.ietf.org/doc/html/rfc7515)
 
 <!-- TOC --><a name="dart"></a>
 
@@ -573,6 +640,25 @@ NoSQL — это базы данных, которые не используют
 - если миксину нужен доступ к API базового класса или к `super`, используют `on`;
 - если у нескольких миксинов есть одноимённый метод, побеждает правый: `class C with A, B` возьмёт реализацию из `B`.
 
+Если нужен тип, который можно использовать и как обычный класс, и как миксин, в Dart 3+ есть `mixin class`:
+
+- обычный `class` нельзя использовать в `with`; для этого тип должен быть объявлен как `mixin` или `mixin class`;
+- `mixin class` можно и наследовать через `extends`, и подмешивать через `with`;
+- у `mixin class` действуют ограничения и класса, и миксина: нельзя указывать `extends` и `with` в самой декларации, нельзя объявлять generative constructor, и нельзя использовать `on`;
+- полезные комбинации: `abstract mixin class` - нельзя инстанцировать, но можно `extends` / `implements` / `with`; `base mixin` - можно только подмешивать, но нельзя свободно `implements` снаружи библиотеки; `base mixin class` - можно и `extends`, и `with`, но нельзя `implements` снаружи библиотеки.
+
+Мини-пример `mixin class`:
+
+```dart
+mixin class Timestamped {
+  final createdAt = DateTime.now();
+}
+
+class Message with Timestamped {}
+
+class AuditRecord extends Timestamped {}
+```
+
 Пример с `on`:
 
 ```dart
@@ -598,6 +684,18 @@ class Bird extends Animal with Flyer {}
 - `AutomaticKeepAliveClientMixin` помогает сохранять состояние элементов в лениво строящихся списках.
 - `WidgetsBindingObserver` позволяет получать события жизненного цикла приложения и системные уведомления.
 - `RestorationMixin` помогает восстанавливать состояние `StatefulWidget`.
+
+Источники:
+- [Dart docs: Mixins](https://dart.dev/language/mixins)
+- [Dart docs: Class modifiers reference](https://dart.dev/language/modifier-reference)
+- [Dart API: ListMixin](https://api.dart.dev/dart-collection/ListMixin.html)
+- [Dart API: MapMixin](https://api.dart.dev/dart-collection/MapMixin.html)
+- [Dart API: SetMixin](https://api.dart.dev/dart-collection/SetMixin.html)
+- [Flutter API: SingleTickerProviderStateMixin](https://api.flutter.dev/flutter/widgets/SingleTickerProviderStateMixin-mixin.html)
+- [Flutter API: TickerProviderStateMixin](https://api.flutter.dev/flutter/widgets/TickerProviderStateMixin-mixin.html)
+- [Flutter API: AutomaticKeepAliveClientMixin](https://api.flutter.dev/flutter/widgets/AutomaticKeepAliveClientMixin-mixin.html)
+- [Flutter API: WidgetsBindingObserver](https://api.flutter.dev/flutter/widgets/WidgetsBindingObserver-class.html)
+- [Flutter API: RestorationMixin](https://api.flutter.dev/flutter/widgets/RestorationMixin-mixin.html)
 
 ---
 <!-- TOC --><a name="sound-null-safety"></a>
